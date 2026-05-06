@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { chunkSections } from "@/lib/chunking/splitter";
-import { embedTexts, embedQuery, gemini, CHAT_MODEL } from "@/lib/gemini/client";
+import { embedDocuments, embedQuery, gemini, CHAT_MODEL } from "@/lib/gemini/client";
 import { parsePdf, parseTxt } from "@/lib/rag/parse";
 import { getSession } from "@/lib/store";
 import type { Citation, DocumentChunk, RetrievedChunk, UploadedDoc } from "@/types";
@@ -39,7 +39,7 @@ export async function ingestFile(
   const chunked = await chunkSections(sections);
   if (!chunked.length) throw new Error("No usable content extracted");
 
-  const embeddings = await embedTexts(chunked.map((c) => c.content));
+  const embeddings = await embedDocuments(chunked.map((c) => c.content));
 
   const docId = nanoid(10);
   const docName = file.name;
@@ -117,7 +117,7 @@ export async function answerQuestion(
   const qVec = await embedQuery(question);
   const retrieved = session.store.similaritySearch(qVec, opts?.topK ?? 3, opts?.docIds);
 
-  if (retrieved.length === 0 || retrieved[0].score < 0.35) {
+  if (retrieved.length === 0) {
     return { answer: REFUSAL, citations: [] };
   }
 
@@ -164,7 +164,7 @@ export async function streamAnswer(
   const qVec = await embedQuery(question);
   const retrieved = session.store.similaritySearch(qVec, opts?.topK ?? 3, opts?.docIds);
 
-  if (retrieved.length === 0 || retrieved[0].score < 0.35) {
+  if (retrieved.length === 0) {
     return {
       citations: [],
       stream: new ReadableStream({

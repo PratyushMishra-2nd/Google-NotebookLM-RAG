@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, TaskType } from "@google/generative-ai";
 
 const KEY = process.env.GOOGLE_API_KEY;
 
@@ -16,7 +16,7 @@ export function gemini(): GoogleGenerativeAI {
   return _client;
 }
 
-export async function embedTexts(texts: string[]): Promise<number[][]> {
+async function embed(texts: string[], taskType: TaskType): Promise<number[][]> {
   if (texts.length === 0) return [];
   const model = gemini().getGenerativeModel({ model: EMBED_MODEL });
 
@@ -27,6 +27,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     const res = await model.batchEmbedContents({
       requests: slice.map((t) => ({
         content: { role: "user", parts: [{ text: t }] },
+        taskType,
       })),
     });
     for (const e of res.embeddings) out.push(e.values);
@@ -34,7 +35,11 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   return out;
 }
 
+export function embedDocuments(texts: string[]): Promise<number[][]> {
+  return embed(texts, TaskType.RETRIEVAL_DOCUMENT);
+}
+
 export async function embedQuery(text: string): Promise<number[]> {
-  const [v] = await embedTexts([text]);
+  const [v] = await embed([text], TaskType.RETRIEVAL_QUERY);
   return v;
 }

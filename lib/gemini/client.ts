@@ -6,7 +6,7 @@ if (!KEY && process.env.NODE_ENV !== "test") {
   console.warn("[gemini] GOOGLE_API_KEY missing — set it in .env.local or Vercel env vars");
 }
 
-export const CHAT_MODEL = process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash-lite";
+export const CHAT_MODEL = process.env.GEMINI_CHAT_MODEL ?? "gemini-3.1-flash-lite-preview";
 export const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL ?? "gemini-embedding-001";
 
 let _client: GoogleGenerativeAI | null = null;

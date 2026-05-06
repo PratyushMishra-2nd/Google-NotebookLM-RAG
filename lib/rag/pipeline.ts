@@ -149,7 +149,10 @@ export async function streamAnswer(
   const session = getSession(sessionId);
   const encoder = new TextEncoder();
 
+  console.log(`[rag] streamAnswer sid=${sessionId} storeSize=${session.store.size()} q="${question}"`);
+
   if (session.store.size() === 0) {
+    console.log("[rag] store empty → refusal");
     return {
       citations: [],
       stream: new ReadableStream({
@@ -163,6 +166,7 @@ export async function streamAnswer(
 
   const qVec = await embedQuery(question);
   const retrieved = session.store.similaritySearch(qVec, opts?.topK ?? 3, opts?.docIds);
+  console.log(`[rag] retrieved ${retrieved.length} chunks, scores: ${retrieved.map((r) => r.score.toFixed(3)).join(", ")}`);
 
   if (retrieved.length === 0) {
     return {

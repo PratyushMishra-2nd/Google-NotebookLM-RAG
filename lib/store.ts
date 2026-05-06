@@ -8,7 +8,12 @@ interface Session {
   touchedAt: number;
 }
 
-const SESSIONS = new Map<string, Session>();
+// Anchor to globalThis so the Map survives Next.js HMR module re-evaluation
+// and cross-route isolation in both dev and serverless edge environments.
+const g = globalThis as typeof globalThis & { __nbrag?: Map<string, Session> };
+if (!g.__nbrag) g.__nbrag = new Map();
+const SESSIONS = g.__nbrag;
+
 const TTL_MS = 1000 * 60 * 60; // 1h idle eviction
 
 function gc() {

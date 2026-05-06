@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
 import { Markdown } from "@/components/markdown";
+import { WaxSeal3D } from "@/components/three/wax-seal-3d";
 import type { ChatMessage } from "@/types";
 import { cn } from "@/utils/cn";
 
@@ -42,7 +43,9 @@ export function MessageBubble({
       className="relative"
     >
       <div className="flex gap-3 items-start">
-        <div className="wax-seal shrink-0">M</div>
+        <div className="shrink-0 mt-0.5">
+          <WaxSeal3D size={52} />
+        </div>
         <div className="flex-1 pt-2 min-w-0">
           <div className="label-mono mb-1.5">Marginalia · response</div>
           <div className={cn("relative", streaming && "caret")}>

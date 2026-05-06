@@ -14,7 +14,6 @@ export async function GET() {
     // Pull a tiny representative sample to keep prompt cheap.
     const sample: string[] = [];
     const seen = new Set<string>();
-    // @ts-expect-error — internal access for sampling
     for (const c of session.store["chunks"] as Array<{ docId: string; content: string }>) {
       if (seen.has(c.docId)) continue;
       seen.add(c.docId);

@@ -8,9 +8,10 @@ import type { UploadedDoc } from "@/types";
 
 interface Props {
   onUploaded: (doc: UploadedDoc) => void;
+  apiKey: string;
 }
 
-export function UploadZone({ onUploaded }: Props) {
+export function UploadZone({ onUploaded, apiKey }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -26,7 +27,7 @@ export function UploadZone({ onUploaded }: Props) {
         const fd = new FormData();
         fd.append("file", f);
         try {
-          const res = await fetch("/api/upload", { method: "POST", body: fd });
+          const res = await fetch("/api/upload", { method: "POST", body: fd, headers: { "X-API-Key": apiKey } });
           const data = await res.json();
           if (!res.ok) throw new Error(data?.error ?? "Upload failed");
           onUploaded(data.doc);

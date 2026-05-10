@@ -10,6 +10,7 @@ import type { ChatMessage, Citation, UploadedDoc } from "@/types";
 interface Props {
   docs: UploadedDoc[];
   selectedDocs: Set<string>;
+  apiKey: string;
 }
 
 const SAMPLE_PROMPTS = [
@@ -19,7 +20,7 @@ const SAMPLE_PROMPTS = [
   "What conclusions does the author draw?",
 ];
 
-export function ChatPanel({ docs, selectedDocs }: Props) {
+export function ChatPanel({ docs, selectedDocs, apiKey }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,7 +36,7 @@ export function ChatPanel({ docs, selectedDocs }: Props) {
       return;
     }
     if (messages.length === 0) {
-      fetch("/api/suggest")
+      fetch("/api/suggest", { headers: apiKey ? { "X-API-Key": apiKey } : {} })
         .then((r) => r.json())
         .then((d) => setSuggestions(Array.isArray(d.questions) ? d.questions : []))
         .catch(() => {});
@@ -78,7 +79,7 @@ export function ChatPanel({ docs, selectedDocs }: Props) {
       const docIds = selectedDocs.size > 0 ? Array.from(selectedDocs) : undefined;
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(apiKey ? { "X-API-Key": apiKey } : {}) },
         body: JSON.stringify({ question: q, docIds }),
       });
 

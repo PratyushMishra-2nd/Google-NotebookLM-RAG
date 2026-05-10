@@ -8,6 +8,7 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
     const { id: sessionId } = await resolveSessionId();
+    const apiKey = req.headers.get("X-API-Key") ?? undefined;
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
       size: file.size,
       mime: file.type,
       buffer,
-    });
+    }, apiKey);
 
     return NextResponse.json({ doc });
   } catch (err) {

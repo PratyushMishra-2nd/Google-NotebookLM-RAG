@@ -5,9 +5,10 @@ import { resolveSessionId } from "@/lib/session-cookie";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const { id } = await resolveSessionId();
+    const apiKey = req.headers.get("X-API-Key") ?? undefined;
     const session = getSession(id);
     if (session.store.size() === 0) return NextResponse.json({ questions: [] });
 
@@ -28,7 +29,7 @@ export async function GET() {
       sample.map((s, i) => `[${i + 1}] ${s}`).join("\n\n"),
     ].join("\n");
 
-    const model = gemini().getGenerativeModel({
+    const model = gemini(apiKey).getGenerativeModel({
       model: CHAT_MODEL,
       generationConfig: { temperature: 0.5, maxOutputTokens: 256 },
     });

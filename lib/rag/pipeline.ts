@@ -10,7 +10,8 @@ const REFUSAL =
 
 export async function ingestFile(
   sessionId: string,
-  file: { name: string; size: number; mime: string; buffer: Buffer }
+  file: { name: string; size: number; mime: string; buffer: Buffer },
+  apiKey?: string
 ): Promise<UploadedDoc> {
   const isPdf = file.mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
   const isTxt =
@@ -39,7 +40,7 @@ export async function ingestFile(
   const chunked = await chunkSections(sections);
   if (!chunked.length) throw new Error("No usable content extracted");
 
-  const embeddings = await embedDocuments(chunked.map((c) => c.content));
+  const embeddings = await embedDocuments(chunked.map((c) => c.content), apiKey);
 
   const docId = nanoid(10);
   const docName = file.name;
@@ -107,21 +108,21 @@ function buildPrompt(question: string, retrieved: RetrievedChunk[]): string {
 export async function answerQuestion(
   sessionId: string,
   question: string,
-  opts?: { docIds?: string[]; topK?: number }
+  opts?: { docIds?: string[]; topK?: number; apiKey?: string }
 ): Promise<{ answer: string; citations: Citation[] }> {
   const session = getSession(sessionId);
   if (session.store.size() === 0) {
     return { answer: REFUSAL, citations: [] };
   }
 
-  const qVec = await embedQuery(question);
+  const qVec = await embedQuery(question, opts?.apiKey);
   const retrieved = session.store.similaritySearch(qVec, opts?.topK ?? 3, opts?.docIds);
 
   if (retrieved.length === 0) {
     return { answer: REFUSAL, citations: [] };
   }
 
-  const model = gemini().getGenerativeModel({
+  const model = gemini(opts?.apiKey).getGenerativeModel({
     model: CHAT_MODEL,
     generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
   });
@@ -144,38 +145,28 @@ export async function answerQuestion(
 export async function streamAnswer(
   sessionId: string,
   question: string,
-  opts?: { docIds?: string[]; topK?: number }
+  opts?: { docIds?: string[]; topK?: number; apiKey?: string }
 ): Promise<{ stream: ReadableStream<Uint8Array>; citations: Citation[] }> {
   const session = getSession(sessionId);
   const encoder = new TextEncoder();
 
-  console.log(`[rag] streamAnswer sid=${sessionId} storeSize=${session.store.size()} q="${question}"`);
-
   if (session.store.size() === 0) {
-    console.log("[rag] store empty → refusal");
     return {
       citations: [],
       stream: new ReadableStream({
-        start(c) {
-          c.enqueue(encoder.encode(REFUSAL));
-          c.close();
-        },
+        start(c) { c.enqueue(encoder.encode(REFUSAL)); c.close(); },
       }),
     };
   }
 
-  const qVec = await embedQuery(question);
+  const qVec = await embedQuery(question, opts?.apiKey);
   const retrieved = session.store.similaritySearch(qVec, opts?.topK ?? 3, opts?.docIds);
-  console.log(`[rag] retrieved ${retrieved.length} chunks, scores: ${retrieved.map((r) => r.score.toFixed(3)).join(", ")}`);
 
   if (retrieved.length === 0) {
     return {
       citations: [],
       stream: new ReadableStream({
-        start(c) {
-          c.enqueue(encoder.encode(REFUSAL));
-          c.close();
-        },
+        start(c) { c.enqueue(encoder.encode(REFUSAL)); c.close(); },
       }),
     };
   }
@@ -188,7 +179,7 @@ export async function streamAnswer(
     score: r.score,
   }));
 
-  const model = gemini().getGenerativeModel({
+  const model = gemini(opts?.apiKey).getGenerativeModel({
     model: CHAT_MODEL,
     generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
   });

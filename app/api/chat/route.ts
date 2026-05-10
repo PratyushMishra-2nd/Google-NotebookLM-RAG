@@ -8,6 +8,7 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
     const { id: sessionId } = await resolveSessionId();
+    const apiKey = req.headers.get("X-API-Key") ?? undefined;
     const body = await req.json();
     const question = (body?.question ?? "").toString().trim();
     const docIds: string[] | undefined = Array.isArray(body?.docIds) ? body.docIds : undefined;
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Question required" }, { status: 400 });
     }
 
-    const { stream, citations } = await streamAnswer(sessionId, question, { docIds, topK: 3 });
+    const { stream, citations } = await streamAnswer(sessionId, question, { docIds, topK: 3, apiKey });
 
     return new Response(stream, {
       headers: {

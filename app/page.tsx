@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { UploadZone } from "@/components/upload-zone";
 import { DocumentSidebar } from "@/components/document-sidebar";
 import { ChatPanel } from "@/components/chat-panel";
-import { ApiKeyGate, ApiKeyModal, useApiKey, providerLabel } from "@/components/api-key-gate";
+import { ApiKeyGate, ApiKeyModal, useApiKey, providerLabel, useBackend, BackendStamps } from "@/components/api-key-gate";
 import type { UploadedDoc } from "@/types";
 
 export default function HomePage() {
@@ -119,11 +119,12 @@ function Header() {
 }
 
 function Footer({ apiKey, onChangeKey }: { apiKey: string | null; onChangeKey: () => void }) {
+  const backend = useBackend();
   return (
     <div className="mt-10 pt-5 border-t border-ink/15 space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="stamp">in-memory</span>
-        <span className="stamp">no db</span>
+        <BackendStamps store={backend} />
+        <span className="stamp">reranked</span>
       </div>
       {apiKey && (
         <div className="flex items-center gap-2 mt-1">

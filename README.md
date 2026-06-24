@@ -151,7 +151,7 @@ new RecursiveCharacterTextSplitter({
 **Why this works well:**
 
 1. **Recursive separators** — the splitter first tries paragraph breaks, then line breaks, then sentence boundaries, only falling back to character-level splits when needed. Chunks rarely break mid-thought.
-2. **1000 characters (~200 tokens)** — large enough to keep meaningful context, small enough that the top-3 retrieval comfortably fits in the prompt with room for the answer.
+2. **1000 characters (~200 tokens)** — large enough to keep meaningful context, small enough that the reranked top-5 retrieval comfortably fits in the prompt with room for the answer.
 3. **200-char overlap (20%)** — context that straddles chunk boundaries is preserved, so a fact mentioned at the end of chunk N also appears at the start of chunk N+1. Critical for retrieval quality on prose.
 4. **Page-aware for PDFs** — each PDF page is split independently before chunking, so each chunk carries the originating page number for citation.
 5. **Markdown header-aware** — `.md` files are split into sections by their headings (`splitMarkdownSections`), and each section's nearest heading is captured as metadata.

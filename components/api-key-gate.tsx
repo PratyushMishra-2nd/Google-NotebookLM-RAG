@@ -13,6 +13,31 @@ export function providerLabel(key: string): "OpenAI" | "Gemini" {
   return key.startsWith("sk-") ? "OpenAI" : "Gemini";
 }
 
+export type Backend = "qdrant" | "in-memory";
+
+/** Active vector-store backend, fetched from the server. `null` until loaded. */
+export function useBackend(): Backend | null {
+  const [store, setStore] = useState<Backend | null>(null);
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((d) => setStore(d.store === "qdrant" ? "qdrant" : "in-memory"))
+      .catch(() => {});
+  }, []);
+  return store;
+}
+
+/** The two backend badges (store + persistence). Empty until backend is known. */
+export function BackendStamps({ store }: { store: Backend | null }) {
+  if (!store) return null;
+  return (
+    <>
+      <span className="stamp">{store}</span>
+      <span className="stamp">{store === "qdrant" ? "persistent" : "ephemeral"}</span>
+    </>
+  );
+}
+
 export function useApiKey() {
   const [key, setKeyState] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -182,6 +207,7 @@ export function ApiKeyGate({
   onKey: (k: string) => void;
   onClear: () => void;
 }) {
+  const backend = useBackend();
   if (apiKey) return <>{children}</>;
 
   return (
@@ -221,8 +247,8 @@ export function ApiKeyGate({
         <KeyInput onSubmit={onKey} />
 
         <div className="mt-5 flex flex-wrap gap-2">
-          <span className="stamp">in-memory</span>
-          <span className="stamp">no db</span>
+          <BackendStamps store={backend} />
+          <span className="stamp">reranked</span>
           <span className="stamp">your key</span>
         </div>
       </motion.div>

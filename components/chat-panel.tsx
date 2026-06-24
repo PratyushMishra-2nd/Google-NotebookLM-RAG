@@ -171,7 +171,7 @@ export function ChatPanel({ docs, selectedDocs, apiKey }: Props) {
           />
           <div className="flex items-center justify-between mt-2 text-[10px] font-mono text-ink-fade">
             <span>
-              ⏎ to send · ⇧⏎ for newline · top-3 retrieval ·{" "}
+              ⏎ to send · ⇧⏎ for newline · top-5 reranked ·{" "}
               {selectedDocs.size > 0
                 ? `scoped to ${selectedDocs.size} vol.`
                 : "all volumes"}

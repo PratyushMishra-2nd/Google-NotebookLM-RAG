@@ -1,6 +1,6 @@
 # Marginalia — a NotebookLM-style RAG study
 
-A polished, single-tenant RAG application inspired by Google NotebookLM. Upload PDFs or text files, ask natural-language questions, and receive grounded, citation-backed answers — powered by **Google Gemini** _or_ **OpenAI** (auto-detected from your API key), **LangChain**, and an **in-memory vector store**. No external database, no fuss.
+A polished RAG application inspired by Google NotebookLM. Upload PDFs or text files, ask natural-language questions, and receive grounded, citation-backed answers — powered by **Google Gemini** _or_ **OpenAI** (auto-detected from your API key), **LangChain**, and a **Qdrant** vector store (with an in-memory fallback when no Qdrant is configured). Retrieval is enhanced with query rewriting and LLM-as-judge reranking; chunks are embedded with contextual headers for sharper recall.
 
 > Aesthetic: editorial archive / manuscript study. Cream paper, ink, and a single drop of crimson. Built with Next.js 15, TypeScript, Tailwind, and Framer Motion.
 
@@ -8,12 +8,12 @@ A polished, single-tenant RAG application inspired by Google NotebookLM. Upload 
 
 ## Features
 
-- **PDF + TXT upload** with drag-and-drop, page-aware parsing, and validation
-- **Smart chunking** via LangChain `RecursiveCharacterTextSplitter` (1000 / 200)
-- **Gemini embeddings** (`gemini-embedding-001`) with batched API calls
-- **In-memory vector store** with manual cosine similarity — zero infra
-- **Top-3 retrieval** scoped optionally to selected documents
-- **Streaming answers** from `gemini-2.5-flash-lite` with strict grounding
+- **PDF + TXT + Markdown upload** with drag-and-drop, page-aware parsing, and validation
+- **Contextual chunking** via LangChain `RecursiveCharacterTextSplitter` (1000 / 200), with markdown header-aware sectioning and per-chunk context headers prepended at embed time
+- **Gemini / OpenAI embeddings** with batched API calls and asymmetric retrieval task types
+- **Qdrant vector store** (persistent, multi-tenant by session) with an in-memory cosine fallback when no Qdrant is configured
+- **Enhanced retrieval** — query rewrite (typo fix + enrichment), dual-query embedding, wide fetch (k=20), and LLM-as-judge rerank to the top 5
+- **Streaming answers** with strict grounding
 - **Footnoted citations** showing source document, page, and similarity score
 - **Multi-document support** — each volume can be toggled on or off for retrieval
 - **AI-suggested follow-up questions** generated from a sample of indexed content
@@ -30,7 +30,7 @@ A polished, single-tenant RAG application inspired by Google NotebookLM. Upload 
 | LLM | Gemini `3.1-flash-lite` or OpenAI `gpt-4o-mini` (auto-detected, configurable) |
 | Embeddings | Gemini `embedding-001` or OpenAI `text-embedding-3-small` |
 | RAG plumbing | LangChain (`@langchain/textsplitters`) |
-| Vector store | Custom in-memory cosine index |
+| Vector store | Qdrant (`@qdrant/js-client-rest`), with custom in-memory cosine fallback |
 | UI | Tailwind CSS, Framer Motion, Radix primitives |
 | Markdown | `react-markdown` + `react-syntax-highlighter` |
 
@@ -63,11 +63,18 @@ GEMINI_CHAT_MODEL=gemini-3.1-flash-lite-preview # optional override
 GEMINI_EMBED_MODEL=gemini-embedding-001         # optional override
 OPENAI_CHAT_MODEL=gpt-4o-mini                   # optional override
 OPENAI_EMBED_MODEL=text-embedding-3-small       # optional override
+
+# Optional: persist embeddings in Qdrant instead of the ephemeral in-memory
+# store. When QDRANT_URL is unset, the app transparently uses in-memory.
+QDRANT_URL=https://your-cluster.qdrant.io
+QDRANT_API_KEY=...
 ```
 
 > **Note:** embeddings from Gemini and OpenAI have different vector dimensions
-> and are **not** interchangeable. If you switch providers, re-upload your
-> documents so they're re-indexed with the new provider's embedding model.
+> and are **not** interchangeable. The store keeps a separate collection per
+> embedding dimension, so a query is only ever compared against vectors from a
+> matching model. If you switch providers, re-upload (or re-query with the same
+> provider) accordingly.
 
 ## Architecture
 
@@ -92,12 +99,16 @@ components/
 
 lib/
   llm/client.ts         # Provider-routed client (Gemini/OpenAI): embed + generate + stream
-  chunking/splitter.ts  # RecursiveCharacterTextSplitter wrapper
-  vectorstore/memory.ts # MemoryVectorStore + cosine similarity
+  chunking/splitter.ts  # Recursive splitter + markdown sectioning + contextual headers
+  vectorstore/
+    types.ts            # Async VectorStore interface (storage-agnostic)
+    qdrant.ts           # Qdrant-backed store + metadata persistence + GC
+    memory.ts           # In-memory cosine fallback
   rag/
-    parse.ts            # PDF (page-aware) + TXT parsing
+    parse.ts            # PDF (page-aware) + TXT/Markdown parsing
+    retrieve.ts         # Query rewrite + dual-query search + LLM-as-judge rerank
     pipeline.ts         # ingestFile, answerQuestion, streamAnswer
-  store.ts              # Per-session ephemeral storage (cookie-keyed)
+  store.ts              # Per-session storage (cookie-keyed) + Qdrant GC scheduler
   session-cookie.ts     # HttpOnly session cookie helper
 
 types/index.ts          # Shared TS types
@@ -109,17 +120,19 @@ utils/cn.ts             # Tailwind class merge helper
 ```
 [Upload]   browser ──multipart──► /api/upload
                                   │
-                                  ├─ parse (pdf-parse | utf-8)
-                                  ├─ chunkSections (1000 / 200, page-aware)
-                                  ├─ embedTexts (Gemini, batched)
-                                  └─ MemoryVectorStore.add → session
+                                  ├─ parse (pdf-parse | utf-8 | markdown sections)
+                                  ├─ chunkSections (1000 / 200, page + heading aware)
+                                  ├─ embed (contextual header prepended, batched)
+                                  └─ store.add + store.putDoc → Qdrant (or memory)
 
 [Chat]     browser ──json──────► /api/chat
                                   │
-                                  ├─ embedQuery
-                                  ├─ similaritySearch (cosine, topK=3)
-                                  ├─ build prompt with [1][2][3] excerpts
-                                  └─ Gemini stream → ReadableStream
+                                  ├─ rewriteQuery (typo fix + enrichment)
+                                  ├─ embed original + rewrite
+                                  ├─ similaritySearch (cosine, fetch k=20, merged)
+                                  ├─ rerank (LLM-as-judge → top 5)
+                                  ├─ build prompt with [1][2]… excerpts
+                                  └─ stream → ReadableStream
                                        (citations sent in X-Citations header)
 ```
 
@@ -141,26 +154,30 @@ new RecursiveCharacterTextSplitter({
 2. **1000 characters (~200 tokens)** — large enough to keep meaningful context, small enough that the top-3 retrieval comfortably fits in the prompt with room for the answer.
 3. **200-char overlap (20%)** — context that straddles chunk boundaries is preserved, so a fact mentioned at the end of chunk N also appears at the start of chunk N+1. Critical for retrieval quality on prose.
 4. **Page-aware for PDFs** — each PDF page is split independently before chunking, so each chunk carries the originating page number for citation.
+5. **Markdown header-aware** — `.md` files are split into sections by their headings (`splitMarkdownSections`), and each section's nearest heading is captured as metadata.
+
+### Contextual embedding
+
+Before embedding, each chunk is prefixed with a compact context label — `documentName — heading (p.N)` — via `contextualize()`. This is applied **at embed time only**; the stored chunk content stays raw, so citations remain clean. The effect: an isolated fragment like *"...rose 40%..."* embeds near its topic (*"Revenue, Q3"*) instead of floating free. This pairs with the asymmetric embedding task types (`RETRIEVAL_DOCUMENT` for chunks, `RETRIEVAL_QUERY` for queries).
+
+## Retrieval
+
+Configured in [`lib/rag/retrieve.ts`](lib/rag/retrieve.ts). Each query runs through:
+
+1. **Query rewrite** — a small/fast chat-model pass fixes typos and enriches the query with clarifying terms. The **original query is always kept** and embedded alongside the rewrite, so a bad rewrite can only add candidates, never replace user intent.
+2. **Dual-query vector search** — both forms are embedded and searched; candidates are merged and deduped by chunk id (best score wins). Wide fetch (`k=20`).
+3. **LLM-as-judge rerank** — candidates are scored 0–10 for usefulness and the top 5 are kept (vector score breaks ties).
+
+Every LLM step **degrades gracefully** to plain vector search if the model call or its parsing fails, so retrieval never hard-fails on an LLM hiccup.
 
 ## Vector store
 
-`MemoryVectorStore` ([`lib/vectorstore/memory.ts`](lib/vectorstore/memory.ts)) is a deliberately tiny class:
+The pipeline talks to an async `VectorStore` interface ([`lib/vectorstore/types.ts`](lib/vectorstore/types.ts)), so storage is swappable:
 
-- One array of `{ embedding, content, docId, page, … }`
-- `similaritySearch(qvec, k, docIds?)` does a linear scan, computes cosine similarity per chunk, sorts, and returns top-K
-- No file persistence, no external service
+- **`QdrantVectorStore`** ([`lib/vectorstore/qdrant.ts`](lib/vectorstore/qdrant.ts)) — persistent, used when `QDRANT_URL` is set. One collection per embedding dimension (`nbrag_<dim>`); every point is tagged with a `sessionId` and all reads/writes filter on it, so a single cluster is safely multi-tenant. Document metadata is persisted too (`nbrag_docs`), so a cold start loses nothing. Since Qdrant has no native TTL, a throttled, upload-age GC (`gcQdrant`, 24h, runs at most every 30 min) evicts stale points.
+- **`MemoryVectorStore`** ([`lib/vectorstore/memory.ts`](lib/vectorstore/memory.ts)) — the zero-infra fallback when no Qdrant is configured. One array, linear cosine scan, top-K. Fast enough for a handful of documents per session, but ephemeral (cleared on cold start / 1h idle eviction).
 
-For typical NotebookLM-style use (a handful of documents, a few hundred chunks per session) a linear scan is fast enough that adding ANN indexing would be premature.
-
-### A note on serverless durability
-
-Vercel serverless functions are stateless across cold starts. The store lives in module-scope memory, so:
-
-- Within one warm instance, uploaded documents persist across requests.
-- A cold start (deploy, idle eviction) clears everything — the user simply re-uploads.
-- This is a deliberate tradeoff to honour the "no external DB" constraint. For multi-instance durability you would swap `MemoryVectorStore` for any persistent backend; the interface is intentionally minimal.
-
-Sessions are keyed by an `httpOnly` cookie so multiple users on the same instance don't see each other's documents.
+Sessions are keyed by an `httpOnly` cookie so multiple users don't see each other's documents.
 
 ## Grounding & refusal
 
@@ -170,24 +187,25 @@ The system prompt in [`lib/rag/pipeline.ts`](lib/rag/pipeline.ts) is explicit:
 - Cite inline as `[1]`, `[2]`, `[3]`.
 - If excerpts are insufficient, return verbatim: *"The uploaded document does not contain enough information to answer this question."*
 
-A similarity floor (top-1 score < 0.35) short-circuits retrieval and returns the refusal directly, before spending a chat-model call.
+When the store is empty or retrieval returns no candidates, the refusal is returned directly without spending a chat-model call.
 
 ## Deploying to Vercel
 
 1. Push this repo to GitHub.
 2. Import into Vercel — defaults work (Next.js detected).
-3. In **Settings → Environment Variables**, add `GOOGLE_API_KEY` and/or `OPENAI_API_KEY` (at least one).
+3. In **Settings → Environment Variables**, add `GOOGLE_API_KEY` and/or `OPENAI_API_KEY` (at least one). Optionally add `QDRANT_URL` + `QDRANT_API_KEY` for persistent, multi-instance-durable storage; without them the app uses the ephemeral in-memory store.
 4. Deploy.
 
 The project ships with `runtime = "nodejs"` and `maxDuration = 60` on the heavy routes (`upload`, `chat`) so Gemini's slowest paths don't time out on the Hobby plan.
 
 ## Free-tier hygiene
 
-- Embeddings batched at 50 per request
-- Top-K retrieval kept at 3
+- Embeddings batched (50 Gemini / 100 OpenAI per request)
+- Retrieval fetches k=20 candidates and reranks to the top 5
+- Query rewrite + rerank add two fast chat-model calls per question; both are on the flash-lite tier and fail open to plain vector search
 - Chat call uses `temperature: 0.1` and `maxOutputTokens: 1024`
 - Suggestion endpoint samples only the first chunk of the first 3 docs
-- Session storage GCs idle sessions after one hour
+- In-memory sessions GC after one hour idle; persisted Qdrant points GC after 24h
 
 ## License
 

@@ -17,7 +17,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Question required" }, { status: 400 });
     }
 
-    const { stream, citations } = await streamAnswer(sessionId, question, { docIds, topK: 3, apiKey });
+    const { stream, citations } = await streamAnswer(sessionId, question, { docIds, apiKey });
 
     return new Response(stream, {
       headers: {

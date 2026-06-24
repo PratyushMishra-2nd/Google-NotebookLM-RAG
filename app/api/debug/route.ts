@@ -11,8 +11,8 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "what is this document about";
 
-  const docs = Array.from(session.docs.values());
-  const storeSize = session.store.size();
+  const docs = await session.store.listDocs();
+  const storeSize = await session.store.size();
 
   let retrieval: object[] = [];
   let embedError: string | null = null;
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   if (storeSize > 0) {
     try {
       const qvec = await embedQuery(q);
-      const results = session.store.similaritySearch(qvec, 3);
+      const results = await session.store.similaritySearch(qvec, 3);
       retrieval = results.map((r) => ({
         score: r.score,
         docName: r.chunk.docName,

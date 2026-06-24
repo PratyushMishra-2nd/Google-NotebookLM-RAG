@@ -12,6 +12,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "@langchain/textsplitters": "^0.1.0",
+    "@qdrant/js-client-rest": "^1.18.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.17",
     "nanoid": "^5.0.8",

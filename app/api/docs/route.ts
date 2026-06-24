@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const { id } = await resolveSessionId();
-  return NextResponse.json({ docs: listDocs(id) });
+  return NextResponse.json({ docs: await listDocs(id) });
 }
 
 export async function DELETE(req: Request) {
@@ -14,6 +14,6 @@ export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const docId = searchParams.get("docId");
   if (!docId) return NextResponse.json({ error: "Missing docId" }, { status: 400 });
-  const ok = removeDoc(id, docId);
+  const ok = await removeDoc(id, docId);
   return NextResponse.json({ ok });
 }

@@ -10,17 +10,10 @@ export async function GET(req: Request) {
     const { id } = await resolveSessionId();
     const apiKey = req.headers.get("X-API-Key") ?? undefined;
     const session = getSession(id);
-    if (session.store.size() === 0) return NextResponse.json({ questions: [] });
+    if ((await session.store.size()) === 0) return NextResponse.json({ questions: [] });
 
     // Pull a tiny representative sample to keep prompt cheap.
-    const sample: string[] = [];
-    const seen = new Set<string>();
-    for (const c of session.store["chunks"] as Array<{ docId: string; content: string }>) {
-      if (seen.has(c.docId)) continue;
-      seen.add(c.docId);
-      sample.push(c.content.slice(0, 600));
-      if (sample.length >= 3) break;
-    }
+    const sample = (await session.store.sampleChunks(3)).map((c) => c.content.slice(0, 600));
 
     const prompt = [
       "Suggest 4 short, specific follow-up questions a curious reader would ask about the excerpts below.",

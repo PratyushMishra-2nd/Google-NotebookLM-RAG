@@ -1,7 +1,8 @@
 import { nanoid } from "nanoid";
-import { chunkSections } from "@/lib/chunking/splitter";
-import { embedDocuments, embedQuery, generateText, streamText } from "@/lib/llm/client";
+import { chunkSections, contextualize } from "@/lib/chunking/splitter";
+import { embedDocuments, generateText, streamText } from "@/lib/llm/client";
 import { parsePdf, parseTxt } from "@/lib/rag/parse";
+import { retrieveContext } from "@/lib/rag/retrieve";
 import { getSession } from "@/lib/store";
 import type { Citation, DocumentChunk, RetrievedChunk, UploadedDoc } from "@/types";
 
@@ -14,10 +15,8 @@ export async function ingestFile(
   apiKey?: string
 ): Promise<UploadedDoc> {
   const isPdf = file.mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  const isTxt =
-    file.mime === "text/plain" ||
-    file.mime === "text/markdown" ||
-    /\.(txt|md)$/i.test(file.name);
+  const isMd = file.mime === "text/markdown" || /\.md$/i.test(file.name);
+  const isTxt = file.mime === "text/plain" || isMd || /\.txt$/i.test(file.name);
 
   if (!isPdf && !isTxt) throw new Error("Unsupported file type — upload PDF or TXT");
   if (file.size === 0) throw new Error("File is empty");
@@ -30,7 +29,7 @@ export async function ingestFile(
     sections = r.sections;
     pages = r.pages;
   } else {
-    sections = parseTxt(file.buffer).sections;
+    sections = parseTxt(file.buffer, isMd).sections;
   }
 
   if (!sections.length || sections.every((s) => !s.text.trim())) {
@@ -40,10 +39,15 @@ export async function ingestFile(
   const chunked = await chunkSections(sections);
   if (!chunked.length) throw new Error("No usable content extracted");
 
-  const embeddings = await embedDocuments(chunked.map((c) => c.content), apiKey);
-
   const docId = nanoid(10);
   const docName = file.name;
+
+  // Embed each chunk WITH its context label (doc + heading + page) so isolated
+  // fragments land near their topic in vector space. Stored content stays raw.
+  const embeddings = await embedDocuments(
+    chunked.map((c) => contextualize(docName, c)),
+    apiKey
+  );
   const records: DocumentChunk[] = chunked.map((c, i) => ({
     id: `${docId}:${i}`,
     docId,
@@ -55,7 +59,7 @@ export async function ingestFile(
   }));
 
   const session = getSession(sessionId);
-  session.store.add(records);
+  await session.store.add(records);
 
   const doc: UploadedDoc = {
     id: docId,
@@ -65,20 +69,17 @@ export async function ingestFile(
     chunkCount: records.length,
     uploadedAt: Date.now(),
   };
-  session.docs.set(docId, doc);
+  await session.store.putDoc(doc);
   return doc;
 }
 
-export function listDocs(sessionId: string): UploadedDoc[] {
-  return Array.from(getSession(sessionId).docs.values()).sort(
-    (a, b) => a.uploadedAt - b.uploadedAt
-  );
+export function listDocs(sessionId: string): Promise<UploadedDoc[]> {
+  return getSession(sessionId).store.listDocs();
 }
 
-export function removeDoc(sessionId: string, docId: string): boolean {
-  const s = getSession(sessionId);
-  s.store.removeByDoc(docId);
-  return s.docs.delete(docId);
+export async function removeDoc(sessionId: string, docId: string): Promise<boolean> {
+  const removed = await getSession(sessionId).store.removeByDoc(docId);
+  return removed > 0;
 }
 
 function buildPrompt(question: string, retrieved: RetrievedChunk[]): string {
@@ -105,18 +106,36 @@ function buildPrompt(question: string, retrieved: RetrievedChunk[]): string {
   ].join("\n");
 }
 
+export interface AnswerOpts {
+  docIds?: string[];
+  topK?: number;
+  fetchK?: number;
+  apiKey?: string;
+  rewrite?: boolean;
+  rerank?: boolean;
+}
+
+function toCitations(retrieved: RetrievedChunk[]): Citation[] {
+  return retrieved.map((r) => ({
+    docId: r.chunk.docId,
+    docName: r.chunk.docName,
+    page: r.chunk.page,
+    snippet: r.chunk.content.slice(0, 240),
+    score: r.score,
+  }));
+}
+
 export async function answerQuestion(
   sessionId: string,
   question: string,
-  opts?: { docIds?: string[]; topK?: number; apiKey?: string }
+  opts?: AnswerOpts
 ): Promise<{ answer: string; citations: Citation[] }> {
   const session = getSession(sessionId);
-  if (session.store.size() === 0) {
+  if ((await session.store.size()) === 0) {
     return { answer: REFUSAL, citations: [] };
   }
 
-  const qVec = await embedQuery(question, opts?.apiKey);
-  const retrieved = session.store.similaritySearch(qVec, opts?.topK ?? 3, opts?.docIds);
+  const { retrieved } = await retrieveContext(session.store, question, opts);
 
   if (retrieved.length === 0) {
     return { answer: REFUSAL, citations: [] };
@@ -125,26 +144,18 @@ export async function answerQuestion(
   const prompt = buildPrompt(question, retrieved);
   const answer = await generateText(prompt, opts?.apiKey, { temperature: 0.1, maxTokens: 1024 });
 
-  const citations: Citation[] = retrieved.map((r) => ({
-    docId: r.chunk.docId,
-    docName: r.chunk.docName,
-    page: r.chunk.page,
-    snippet: r.chunk.content.slice(0, 240),
-    score: r.score,
-  }));
-
-  return { answer, citations };
+  return { answer, citations: toCitations(retrieved) };
 }
 
 export async function streamAnswer(
   sessionId: string,
   question: string,
-  opts?: { docIds?: string[]; topK?: number; apiKey?: string }
+  opts?: AnswerOpts
 ): Promise<{ stream: ReadableStream<Uint8Array>; citations: Citation[] }> {
   const session = getSession(sessionId);
   const encoder = new TextEncoder();
 
-  if (session.store.size() === 0) {
+  if ((await session.store.size()) === 0) {
     return {
       citations: [],
       stream: new ReadableStream({
@@ -153,8 +164,7 @@ export async function streamAnswer(
     };
   }
 
-  const qVec = await embedQuery(question, opts?.apiKey);
-  const retrieved = session.store.similaritySearch(qVec, opts?.topK ?? 3, opts?.docIds);
+  const { retrieved } = await retrieveContext(session.store, question, opts);
 
   if (retrieved.length === 0) {
     return {
@@ -165,14 +175,7 @@ export async function streamAnswer(
     };
   }
 
-  const citations: Citation[] = retrieved.map((r) => ({
-    docId: r.chunk.docId,
-    docName: r.chunk.docName,
-    page: r.chunk.page,
-    snippet: r.chunk.content.slice(0, 240),
-    score: r.score,
-  }));
-
+  const citations = toCitations(retrieved);
   const prompt = buildPrompt(question, retrieved);
 
   const stream = new ReadableStream<Uint8Array>({

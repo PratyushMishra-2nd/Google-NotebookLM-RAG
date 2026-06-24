@@ -1,4 +1,4 @@
-import type { RawSection } from "@/lib/chunking/splitter";
+import { splitMarkdownSections, type RawSection } from "@/lib/chunking/splitter";
 
 export async function parsePdf(buffer: Buffer): Promise<{ sections: RawSection[]; pages: number }> {
   // Import inner module directly — top-level pdf-parse has a debug branch that
@@ -15,7 +15,9 @@ export async function parsePdf(buffer: Buffer): Promise<{ sections: RawSection[]
   return { sections, pages: data.numpages };
 }
 
-export function parseTxt(buffer: Buffer): { sections: RawSection[] } {
+export function parseTxt(buffer: Buffer, markdown = false): { sections: RawSection[] } {
   const text = buffer.toString("utf-8");
-  return { sections: [{ text }] };
+  // Markdown carries structure in its headings — split on them so each section
+  // is tagged with its heading for contextual embedding. Plain text has none.
+  return { sections: markdown ? splitMarkdownSections(text) : [{ text }] };
 }

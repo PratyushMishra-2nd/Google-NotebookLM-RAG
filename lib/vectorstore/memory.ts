@@ -1,4 +1,5 @@
-import type { DocumentChunk, RetrievedChunk } from "@/types";
+import type { DocumentChunk, RetrievedChunk, UploadedDoc } from "@/types";
+import type { VectorStore } from "@/lib/vectorstore/types";
 
 export function cosine(a: number[], b: number[]): number {
   let dot = 0;
@@ -16,30 +17,41 @@ export function cosine(a: number[], b: number[]): number {
 
 /**
  * Pure in-memory vector index. Lives only in module-scope memory of the
- * current serverless instance — no external DB, fully ephemeral.
+ * current serverless instance — no external DB, fully ephemeral. Used as a
+ * fallback when no Qdrant connection is configured.
+ *
+ * Methods are async to match the {@link VectorStore} contract shared with the
+ * Qdrant-backed store; the work itself is synchronous.
  */
-export class MemoryVectorStore {
+export class MemoryVectorStore implements VectorStore {
   private chunks: DocumentChunk[] = [];
+  private docs = new Map<string, UploadedDoc>();
 
-  add(chunks: DocumentChunk[]): void {
+  async add(chunks: DocumentChunk[]): Promise<void> {
     this.chunks.push(...chunks);
   }
 
-  removeByDoc(docId: string): number {
+  async removeByDoc(docId: string): Promise<number> {
     const before = this.chunks.length;
     this.chunks = this.chunks.filter((c) => c.docId !== docId);
+    this.docs.delete(docId);
     return before - this.chunks.length;
   }
 
-  clear(): void {
+  async clear(): Promise<void> {
     this.chunks = [];
+    this.docs.clear();
   }
 
-  size(): number {
+  async size(): Promise<number> {
     return this.chunks.length;
   }
 
-  similaritySearch(queryEmbedding: number[], topK = 3, docIds?: string[]): RetrievedChunk[] {
+  async similaritySearch(
+    queryEmbedding: number[],
+    topK = 5,
+    docIds?: string[]
+  ): Promise<RetrievedChunk[]> {
     const pool = docIds && docIds.length
       ? this.chunks.filter((c) => docIds.includes(c.docId))
       : this.chunks;
@@ -56,5 +68,29 @@ export class MemoryVectorStore {
 
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, topK);
+  }
+
+  async sampleChunks(limit: number): Promise<DocumentChunk[]> {
+    const out: DocumentChunk[] = [];
+    const seen = new Set<string>();
+    for (const c of this.chunks) {
+      if (seen.has(c.docId)) continue;
+      seen.add(c.docId);
+      out.push(c);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  async putDoc(doc: UploadedDoc): Promise<void> {
+    this.docs.set(doc.id, doc);
+  }
+
+  async listDocs(): Promise<UploadedDoc[]> {
+    return Array.from(this.docs.values()).sort((a, b) => a.uploadedAt - b.uploadedAt);
+  }
+
+  async deleteDoc(docId: string): Promise<void> {
+    this.docs.delete(docId);
   }
 }

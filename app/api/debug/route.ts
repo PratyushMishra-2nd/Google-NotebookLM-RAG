@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveSessionId } from "@/lib/session-cookie";
 import { getSession } from "@/lib/store";
-import { embedQuery } from "@/lib/gemini/client";
+import { embedQuery } from "@/lib/llm/client";
 
 export const runtime = "nodejs";
 
@@ -40,9 +40,12 @@ export async function GET(req: Request) {
     retrieval,
     embedError,
     env: {
-      CHAT_MODEL: process.env.GEMINI_CHAT_MODEL ?? "gemini-2.0-flash-lite",
-      EMBED_MODEL: process.env.GEMINI_EMBED_MODEL ?? "gemini-embedding-001",
-      KEY_SET: !!process.env.GOOGLE_API_KEY,
+      GEMINI_CHAT_MODEL: process.env.GEMINI_CHAT_MODEL ?? "gemini-3.1-flash-lite-preview",
+      GEMINI_EMBED_MODEL: process.env.GEMINI_EMBED_MODEL ?? "gemini-embedding-001",
+      OPENAI_CHAT_MODEL: process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini",
+      OPENAI_EMBED_MODEL: process.env.OPENAI_EMBED_MODEL ?? "text-embedding-3-small",
+      GOOGLE_KEY_SET: !!process.env.GOOGLE_API_KEY,
+      OPENAI_KEY_SET: !!process.env.OPENAI_API_KEY,
     },
   });
 }

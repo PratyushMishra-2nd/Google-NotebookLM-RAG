@@ -4,14 +4,29 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { cn } from "@/utils/cn";
 
-const LS_KEY = "nbrag_gemini_key";
+const LS_KEY = "nbrag_api_key";
+// Back-compat: migrate the old Gemini-only storage key if present.
+const LS_KEY_LEGACY = "nbrag_gemini_key";
+
+/** Label the provider a key belongs to, from its shape. */
+export function providerLabel(key: string): "OpenAI" | "Gemini" {
+  return key.startsWith("sk-") ? "OpenAI" : "Gemini";
+}
 
 export function useApiKey() {
   const [key, setKeyState] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(LS_KEY);
+    let stored = localStorage.getItem(LS_KEY);
+    if (!stored) {
+      const legacy = localStorage.getItem(LS_KEY_LEGACY);
+      if (legacy) {
+        localStorage.setItem(LS_KEY, legacy);
+        localStorage.removeItem(LS_KEY_LEGACY);
+        stored = legacy;
+      }
+    }
     setKeyState(stored);
     setLoaded(true);
   }, []);
@@ -92,13 +107,16 @@ export function ApiKeyModal({ onKey, onClear, currentKey, showSettings, onCloseS
 
           <h2 className="font-display text-[28px] font-medium leading-tight text-ink mt-2">
             {isChange ? "Update" : "Enter"} your{" "}
-            <span className="italic text-seal">Gemini</span> API key
+            <span className="italic text-seal">Gemini</span> or{" "}
+            <span className="italic text-seal">OpenAI</span> API key
           </h2>
 
           <p className="font-body italic text-[13px] text-ink-fade mt-2 leading-relaxed">
-            Key stored only in your browser (localStorage). Never sent anywhere except Google's
-            API. Get one free at{" "}
-            <span className="text-ink-soft underline">aistudio.google.com/apikey</span>
+            Provider auto-detected from the key (<span className="font-mono">sk-…</span> → OpenAI,{" "}
+            <span className="font-mono">AIza…</span> → Gemini). Stored only in your browser
+            (localStorage), never on any server. Get one at{" "}
+            <span className="text-ink-soft underline">aistudio.google.com/apikey</span> or{" "}
+            <span className="text-ink-soft underline">platform.openai.com/api-keys</span>
           </p>
 
           <div className="rule-line my-4" />
@@ -110,7 +128,7 @@ export function ApiKeyModal({ onKey, onClear, currentKey, showSettings, onCloseS
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="AIza…"
+              placeholder="AIza… or sk-…"
               className="w-full border border-ink/30 bg-paper/60 px-3 py-2.5 font-mono text-sm text-ink placeholder:text-ink-fade/60 outline-none focus:border-seal transition-colors pr-10"
             />
             <button
@@ -194,9 +212,10 @@ export function ApiKeyGate({
         <div className="rule-line my-5" />
 
         <p className="font-body italic text-[13px] text-ink-fade mb-4 leading-relaxed">
-          Paste your free Gemini API key to begin. Stored only in your browser — never on any
-          server. Get one at{" "}
-          <span className="text-ink-soft underline">aistudio.google.com/apikey</span>
+          Paste your Gemini or OpenAI API key to begin — provider is auto-detected. Stored only in
+          your browser, never on any server. Get one at{" "}
+          <span className="text-ink-soft underline">aistudio.google.com/apikey</span> or{" "}
+          <span className="text-ink-soft underline">platform.openai.com/api-keys</span>
         </p>
 
         <KeyInput onSubmit={onKey} />

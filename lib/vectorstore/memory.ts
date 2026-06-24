@@ -44,7 +44,12 @@ export class MemoryVectorStore {
       ? this.chunks.filter((c) => docIds.includes(c.docId))
       : this.chunks;
 
-    const scored = pool.map((chunk) => ({
+    // Guard against provider/model mismatch: embeddings of differing dimension
+    // (e.g. docs indexed with Gemini, query made with OpenAI) are not comparable.
+    const dim = queryEmbedding.length;
+    const comparable = pool.filter((c) => c.embedding.length === dim);
+
+    const scored = comparable.map((chunk) => ({
       chunk,
       score: cosine(queryEmbedding, chunk.embedding),
     }));

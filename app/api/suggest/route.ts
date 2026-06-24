@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { gemini, CHAT_MODEL } from "@/lib/gemini/client";
+import { generateText } from "@/lib/llm/client";
 import { getSession } from "@/lib/store";
 import { resolveSessionId } from "@/lib/session-cookie";
 
@@ -29,12 +29,8 @@ export async function GET(req: Request) {
       sample.map((s, i) => `[${i + 1}] ${s}`).join("\n\n"),
     ].join("\n");
 
-    const model = gemini(apiKey).getGenerativeModel({
-      model: CHAT_MODEL,
-      generationConfig: { temperature: 0.5, maxOutputTokens: 256 },
-    });
-    const res = await model.generateContent(prompt);
-    const txt = res.response.text().trim().replace(/^```(?:json)?|```$/g, "").trim();
+    const raw = await generateText(prompt, apiKey, { temperature: 0.5, maxTokens: 256 });
+    const txt = raw.replace(/^```(?:json)?|```$/g, "").trim();
     let questions: string[] = [];
     try {
       questions = JSON.parse(txt);

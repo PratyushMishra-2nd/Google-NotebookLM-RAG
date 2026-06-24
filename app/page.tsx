@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { UploadZone } from "@/components/upload-zone";
 import { DocumentSidebar } from "@/components/document-sidebar";
 import { ChatPanel } from "@/components/chat-panel";
-import { ApiKeyGate, ApiKeyModal, useApiKey } from "@/components/api-key-gate";
+import { ApiKeyGate, ApiKeyModal, useApiKey, providerLabel } from "@/components/api-key-gate";
 import type { UploadedDoc } from "@/types";
 
 export default function HomePage() {
@@ -110,7 +110,7 @@ function Header() {
           Margin<span className="italic font-light text-seal">alia</span><span className="text-seal">.</span>
         </h1>
         <p className="font-body italic text-[13px] text-ink-fade leading-snug mt-1">
-          A private reading room, indexed by Gemini.
+          A private reading room, indexed by Gemini or OpenAI.
         </p>
       </div>
       <div className="rule-line" />
@@ -128,7 +128,7 @@ function Footer({ apiKey, onChangeKey }: { apiKey: string | null; onChangeKey: (
       {apiKey && (
         <div className="flex items-center gap-2 mt-1">
           <span className="font-mono text-[10px] text-ink-fade">
-            key: <span className="text-ink-soft">{apiKey.slice(0, 8)}…</span>
+            {providerLabel(apiKey)}: <span className="text-ink-soft">{apiKey.slice(0, 8)}…</span>
           </span>
           <button
             onClick={onChangeKey}
@@ -141,7 +141,7 @@ function Footer({ apiKey, onChangeKey }: { apiKey: string | null; onChangeKey: (
       <p className="font-mono text-[10px] text-ink-fade leading-relaxed">
         Embeddings live only in this serverless instance. Refreshing the world clears the desk.
       </p>
-      <p className="font-mono text-[10px] text-ink-fade italic">Gemini · LangChain · Next 15</p>
+      <p className="font-mono text-[10px] text-ink-fade italic">Gemini · OpenAI · LangChain · Next 15</p>
     </div>
   );
 }

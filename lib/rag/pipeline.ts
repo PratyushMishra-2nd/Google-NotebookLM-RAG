@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { chunkSections } from "@/lib/chunking/splitter";
-import { embedDocuments, embedQuery, gemini, CHAT_MODEL } from "@/lib/gemini/client";
+import { embedDocuments, embedQuery, generateText, streamText } from "@/lib/llm/client";
 import { parsePdf, parseTxt } from "@/lib/rag/parse";
 import { getSession } from "@/lib/store";
 import type { Citation, DocumentChunk, RetrievedChunk, UploadedDoc } from "@/types";
@@ -122,14 +122,8 @@ export async function answerQuestion(
     return { answer: REFUSAL, citations: [] };
   }
 
-  const model = gemini(opts?.apiKey).getGenerativeModel({
-    model: CHAT_MODEL,
-    generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-  });
-
   const prompt = buildPrompt(question, retrieved);
-  const res = await model.generateContent(prompt);
-  const answer = res.response.text().trim();
+  const answer = await generateText(prompt, opts?.apiKey, { temperature: 0.1, maxTokens: 1024 });
 
   const citations: Citation[] = retrieved.map((r) => ({
     docId: r.chunk.docId,
@@ -179,19 +173,12 @@ export async function streamAnswer(
     score: r.score,
   }));
 
-  const model = gemini(opts?.apiKey).getGenerativeModel({
-    model: CHAT_MODEL,
-    generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-  });
-
   const prompt = buildPrompt(question, retrieved);
-  const result = await model.generateContentStream(prompt);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        for await (const chunk of result.stream) {
-          const t = chunk.text();
+        for await (const t of streamText(prompt, opts?.apiKey, { temperature: 0.1, maxTokens: 1024 })) {
           if (t) controller.enqueue(encoder.encode(t));
         }
       } catch (err) {

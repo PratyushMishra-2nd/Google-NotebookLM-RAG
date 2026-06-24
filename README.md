@@ -1,6 +1,6 @@
 # Marginalia — a NotebookLM-style RAG study
 
-A polished, single-tenant RAG application inspired by Google NotebookLM. Upload PDFs or text files, ask natural-language questions, and receive grounded, citation-backed answers — all powered by **Google Gemini**, **LangChain**, and an **in-memory vector store**. No external database, no OpenAI, no fuss.
+A polished, single-tenant RAG application inspired by Google NotebookLM. Upload PDFs or text files, ask natural-language questions, and receive grounded, citation-backed answers — powered by **Google Gemini** _or_ **OpenAI** (auto-detected from your API key), **LangChain**, and an **in-memory vector store**. No external database, no fuss.
 
 > Aesthetic: editorial archive / manuscript study. Cream paper, ink, and a single drop of crimson. Built with Next.js 15, TypeScript, Tailwind, and Framer Motion.
 
@@ -27,8 +27,8 @@ A polished, single-tenant RAG application inspired by Google NotebookLM. Upload 
 |-------|--------|
 | Framework | Next.js 15 (App Router) |
 | Language | TypeScript (strict) |
-| LLM | Gemini `2.5-flash-lite` (configurable) |
-| Embeddings | Gemini `embedding-001` |
+| LLM | Gemini `3.1-flash-lite` or OpenAI `gpt-4o-mini` (auto-detected, configurable) |
+| Embeddings | Gemini `embedding-001` or OpenAI `text-embedding-3-small` |
 | RAG plumbing | LangChain (`@langchain/textsplitters`) |
 | Vector store | Custom in-memory cosine index |
 | UI | Tailwind CSS, Framer Motion, Radix primitives |
@@ -40,10 +40,12 @@ A polished, single-tenant RAG application inspired by Google NotebookLM. Upload 
 # 1. Install
 npm install
 
-# 2. Configure the Gemini key
+# 2. Configure a key (Gemini or OpenAI)
 cp .env.example .env.local
 # then edit .env.local and paste your key from
-# https://aistudio.google.com/apikey
+# https://aistudio.google.com/apikey  (Gemini)
+# https://platform.openai.com/api-keys (OpenAI)
+# — or just paste a key in the UI; the provider is auto-detected.
 
 # 3. Run
 npm run dev
@@ -53,10 +55,19 @@ npm run dev
 ## Environment variables
 
 ```env
-GOOGLE_API_KEY=...            # required
-GEMINI_CHAT_MODEL=gemini-2.5-flash-lite     # optional override
-GEMINI_EMBED_MODEL=gemini-embedding-001     # optional override
+# Provide at least one. The provider used per request is auto-detected:
+# a UI-supplied key wins; otherwise OPENAI_API_KEY, then GOOGLE_API_KEY.
+GOOGLE_API_KEY=...                              # Gemini
+OPENAI_API_KEY=...                              # OpenAI
+GEMINI_CHAT_MODEL=gemini-3.1-flash-lite-preview # optional override
+GEMINI_EMBED_MODEL=gemini-embedding-001         # optional override
+OPENAI_CHAT_MODEL=gpt-4o-mini                   # optional override
+OPENAI_EMBED_MODEL=text-embedding-3-small       # optional override
 ```
+
+> **Note:** embeddings from Gemini and OpenAI have different vector dimensions
+> and are **not** interchangeable. If you switch providers, re-upload your
+> documents so they're re-indexed with the new provider's embedding model.
 
 ## Architecture
 
@@ -80,7 +91,7 @@ components/
   toast.tsx             # Toast provider + hook
 
 lib/
-  gemini/client.ts      # Singleton Gemini client + batched embedTexts
+  llm/client.ts         # Provider-routed client (Gemini/OpenAI): embed + generate + stream
   chunking/splitter.ts  # RecursiveCharacterTextSplitter wrapper
   vectorstore/memory.ts # MemoryVectorStore + cosine similarity
   rag/
@@ -165,7 +176,7 @@ A similarity floor (top-1 score < 0.35) short-circuits retrieval and returns the
 
 1. Push this repo to GitHub.
 2. Import into Vercel — defaults work (Next.js detected).
-3. In **Settings → Environment Variables**, add `GOOGLE_API_KEY`.
+3. In **Settings → Environment Variables**, add `GOOGLE_API_KEY` and/or `OPENAI_API_KEY` (at least one).
 4. Deploy.
 
 The project ships with `runtime = "nodejs"` and `maxDuration = 60` on the heavy routes (`upload`, `chat`) so Gemini's slowest paths don't time out on the Hobby plan.

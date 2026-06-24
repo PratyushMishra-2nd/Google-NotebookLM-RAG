@@ -189,24 +189,6 @@ The system prompt in [`lib/rag/pipeline.ts`](lib/rag/pipeline.ts) is explicit:
 
 When the store is empty or retrieval returns no candidates, the refusal is returned directly without spending a chat-model call.
 
-## Deploying to Vercel
-
-1. Push this repo to GitHub.
-2. Import into Vercel — defaults work (Next.js detected).
-3. In **Settings → Environment Variables**, add `GOOGLE_API_KEY` and/or `OPENAI_API_KEY` (at least one). Optionally add `QDRANT_URL` + `QDRANT_API_KEY` for persistent, multi-instance-durable storage; without them the app uses the ephemeral in-memory store.
-4. Deploy.
-
-The project ships with `runtime = "nodejs"` and `maxDuration = 60` on the heavy routes (`upload`, `chat`) so Gemini's slowest paths don't time out on the Hobby plan.
-
-## Free-tier hygiene
-
-- Embeddings batched (50 Gemini / 100 OpenAI per request)
-- Retrieval fetches k=20 candidates and reranks to the top 5
-- Query rewrite + rerank add two fast chat-model calls per question; both are on the flash-lite tier and fail open to plain vector search
-- Chat call uses `temperature: 0.1` and `maxOutputTokens: 1024`
-- Suggestion endpoint samples only the first chunk of the first 3 docs
-- In-memory sessions GC after one hour idle; persisted Qdrant points GC after 24h
-
 ## License
 
 MIT.
